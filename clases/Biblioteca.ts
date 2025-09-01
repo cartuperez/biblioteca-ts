@@ -2,6 +2,8 @@ import { Libro } from "./Libro";
 import { Socio } from "./Socio";
 import { Autor } from "./Autor";
 import { EventoBiblioteca } from "./EventoBiblioteca";
+import { GestorPrestamos } from "./GestorPrestamos";
+import { PoliticaEstricta, PoliticaFlexible, PoliticaEstudiante, PoliticaDocente } from "./PoliticaPrestamo";
 
 /**
  * la clase principal que maneja toda la biblioteca
@@ -161,4 +163,82 @@ export class Biblioteca {
   private libroEstaPrestado(libro: Libro): boolean {
     return this.socios.some(socio => socio.tienePrestadoLibro(libro));
   }
+  retirarLibroTipo(socioId: number, libroISBN: string, tipo: "regular" | "corto" | "referencia" | "digital"): void {
+  const socio = this.buscarSocio(socioId);
+  const libro = this.buscarLibro(libroISBN);
+
+  if (!socio) throw new Error("No encontramos ese socio en nuestro sistema");
+  if (!libro) throw new Error("Ese libro no está en nuestro catálogo");
+
+  if (socio.deuda > 0) {
+    throw new Error(`${socio.nombreCompleto}, tenés una deuda de $${socio.deuda} pendiente.`);
+  }
+  if (this["libroEstaPrestado"](libro)) {
+    throw new Error(`"${libro.titulo}" ya está prestado, pero podés reservarlo si querés`);
+  }
+
+  socio.retirarConTipo(libro, tipo);
+  console.log(`oka, ${socio.nombreCompleto} se llevó "${libro.titulo}" (${tipo})`);
+}
+ private gestorPrestamos = new GestorPrestamos(new PoliticaEstricta());
+
+setPoliticaPrestamo(tipo: "estricta" | "flexible" | "estudiante" | "docente"): void {
+  switch (tipo) {
+    case "estricta":   this.gestorPrestamos.setPolitica(new PoliticaEstricta()); break;
+    case "flexible":   this.gestorPrestamos.setPolitica(new PoliticaFlexible()); break;
+    case "estudiante": this.gestorPrestamos.setPolitica(new PoliticaEstudiante()); break;
+    case "docente":    this.gestorPrestamos.setPolitica(new PoliticaDocente()); break;
+  }
+  console.log(`Política de préstamo activa: ${tipo}`);
+}
+retirarLibroTipoConPolitica(
+  socioId: number,
+  libroISBN: string,
+  tipo: "regular" | "corto" | "referencia" | "digital",
+  esEpocaExamen: boolean = false
+): void {
+  const socio = this.buscarSocio(socioId);
+  const libro = this.buscarLibro(libroISBN);
+
+  if (!socio) throw new Error("No encontramos ese socio en nuestro sistema");
+  if (!libro) throw new Error("Ese libro no está en nuestro catálogo");
+
+  if (socio.deuda > 0) {
+    throw new Error(`${socio.nombreCompleto}, tenés una deuda de $${socio.deuda} pendiente. Primero necesitás saldarla para poder llevarte libros`);
+  }
+  if (this["libroEstaPrestado"](libro)) {
+    throw new Error(`"${libro.titulo}" ya está prestado, pero podés reservarlo si querés`);
+  }
+
+  // Base por tipo
+  const periodoBase = tipo === "regular" ? 14 :
+                      tipo === "corto"   ? 7  :
+                      0; // referencia/digital no usan período
+
+  const hoy = new Date();
+  const ctx = {
+    tieneVencidos: socio.tieneVencidosAl(hoy),
+    periodoBaseDias: periodoBase,
+    esEpocaExamen
+  };
+
+  const res = this.gestorPrestamos.evaluar(ctx);
+  if (!res.ok) {
+    throw new Error(res.motivo || "Préstamo no permitido por la política actual");
+  }
+
+  // Aplicación:
+  // - Para regular/corto: usamos tu método existente `retirar(libro, duracion)`
+  //   con el período que dictó la política (res.periodoDias).
+  // - Para referencia/digital: usamos retirarConTipo que ya creaste.
+  if (tipo === "regular" || tipo === "corto") {
+    const dias = res.periodoDias ?? periodoBase;
+    socio.retirar(libro, dias); // usa PrestamoBasico con el vencimiento ajustado por la política
+  } else {
+    socio.retirarConTipo(libro, tipo); // referencia/digital (sin multa ni límite)
+  }
+
+  console.log(`oka, ${socio.nombreCompleto} se llevó "${libro.titulo}" (${tipo}) con política aplicada`);
+}
+
 }

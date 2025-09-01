@@ -1,5 +1,10 @@
 import { Libro } from "./Libro";
 import { Prestamo } from "./Prestamo";
+import { PrestamoBasico } from "./PrestamoBasico";
+import { PrestamoRegular } from "./PrestamoRegular";
+import { PrestamoCorto } from "./PrestamoCorto";
+import { PrestamoReferencia } from "./PrestamoReferencia";
+import { PrestamoDigital } from "./PrestamoDigital";
 
 /**
  * Cada socio de la biblioteca con su historial y estado
@@ -26,7 +31,7 @@ export class Socio {
   retirar(libro: Libro, duracion: number): void {
     const vencimiento = new Date();
     vencimiento.setDate(vencimiento.getDate() + duracion);
-    this.prestamos.push(new Prestamo(libro, vencimiento));
+    this.prestamos.push(new PrestamoBasico(libro, vencimiento));
   }
 
   // devuelve un libro
@@ -37,11 +42,12 @@ export class Socio {
     }
 
     const hoy = new Date();
-    if (hoy > prestamo.vencimiento) {
-      const diasDeRetraso = Math.floor((hoy.getTime() - prestamo.vencimiento.getTime()) / (1000 * 60 * 60 * 24));
-      const multa = diasDeRetraso * 50;
+    const multa = prestamo.calcularMulta(hoy, 50); // se usa polimorfismo ahora
+    if (multa > 0) {
       this._deuda += multa;
-      console.log(`${libro.titulo} se entregó ${diasDeRetraso} días tarde. Esto suma $${multa} a tu cuenta. Tu deuda total ahora es de $${this._deuda}`);
+      console.log(
+        `${libro.titulo} se entregó tarde. Esto suma $${multa} a tu cuenta. Tu deuda total ahora es de $${this._deuda}`
+      );
     } else {
       console.log(`Lo devolviste a tiempo`);
     }
@@ -62,4 +68,36 @@ export class Socio {
     this._deuda = 0;
     console.log(`${this.nombreCompleto}, Tu deuda está saldada`);
   }
+  retirarConTipo(libro: Libro, tipo: "regular" | "corto" | "referencia" | "digital"): void {
+  let p: Prestamo;
+
+  switch (tipo) {
+    case "regular":
+      p = new PrestamoRegular(libro);
+      break;
+    case "corto":
+      p = new PrestamoCorto(libro);
+      break;
+    case "referencia":
+      p = new PrestamoReferencia(libro);
+      break;
+    case "digital":
+      p = new PrestamoDigital(libro);
+      break;
+  }
+
+  this.prestamos.push(p);
+}
+tieneVencidosAl(fecha: Date): boolean {
+  return this.prestamos.some(p => {
+    const vto = p.calcularVencimiento();
+    if (!vto) return false; // digital o referencia no vencen
+    const vtoNormalizado = new Date(vto.getFullYear(), vto.getMonth(), vto.getDate());
+    const fechaNormalizada = new Date(fecha.getFullYear(), fecha.getMonth(), fecha.getDate());
+    return vtoNormalizado.getTime() < fechaNormalizada.getTime();
+  });
+}
+
+
+
 }
